@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import User from "../models/User";
+import Availability from "../models/Availability";
 
 export const getProfessionals = async (req: Request, res: Response) => {
   try {
@@ -190,3 +191,39 @@ export const getSpecialties = async (_req: Request, res: Response) => {
 };
 
 
+export const getProfessionalAvailabilities = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    const professional = await User.findOne({
+      _id: id,
+      role: "professional",
+      isEmailVerified: true,
+    }).select("_id nom prenom profession");
+
+    if (!professional) {
+      return res.status(404).json({
+        message: "Professionnel introuvable",
+      });
+    }
+
+    const availabilities = await Availability.find({
+      professional: id,
+      isActive: true,
+    })
+      .select("dayOfWeek startTime endTime isActive")
+      .sort({ dayOfWeek: 1, startTime: 1 });
+
+    return res.json({
+      professionalId: professional._id,
+      availabilities,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Erreur serveur",
+    });
+  }
+};

@@ -4,12 +4,14 @@ import { getProfessionalSuggestions } from "../controllers/professional.controll
 import { getProfessions } from "../controllers/professional.controller";
 import { getSpecialties } from "../controllers/professional.controller";
 import { getProfessionalById } from "../controllers/professional.controller";
+import { getProfessionalAvailabilities } from "../controllers/professional.controller";
 const router = Router();
 
 router.get("/", getProfessionals);
 router.get("/suggestions", getProfessionalSuggestions);
 router.get("/professions", getProfessions);
 router.get("/specialties", getSpecialties);
+router.get("/:id/availabilities", getProfessionalAvailabilities);
 router.get("/:id", getProfessionalById);
 
 export default router;

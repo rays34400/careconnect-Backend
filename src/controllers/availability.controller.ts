@@ -2,6 +2,7 @@ import { Response } from "express";
 import mongoose from "mongoose";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import Availability from "../models/Availability";
+import User from "../models/User";
 
 const toMinutes = (time: string) => {
   const [h, m] = time.split(":").map(Number);
