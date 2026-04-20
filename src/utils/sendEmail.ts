@@ -12,8 +12,7 @@ export const sendVerificationEmail = async (
     },
   });
 
-  const verificationUrl = `http://localhost:3000/api/auth/verify-email/${token}`;
-
+  const verificationUrl = `http://localhost:5173/verify-email/${token}`;
   await transporter.sendMail({
     from: `"CareConnect" <${process.env.EMAIL_USER}>`,
     to,

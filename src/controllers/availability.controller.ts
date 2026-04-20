@@ -1,6 +1,12 @@
 import { Response } from "express";
+import mongoose from "mongoose";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import Availability from "../models/Availability";
+
+const toMinutes = (time: string) => {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+};
 
 /**
  * =========================
@@ -19,14 +25,12 @@ export const createAvailabilities = async (
         .json({ message: "Accès réservé aux professionnels" });
     }
 
-    // Accepte soit un objet soit un tableau
     const input = Array.isArray(req.body) ? req.body : [req.body];
 
     if (input.length === 0) {
       return res.status(400).json({ message: "Aucune disponibilité fournie" });
     }
 
-    // Validation basique
     for (const item of input) {
       if (
         item.dayOfWeek === undefined ||
@@ -38,34 +42,50 @@ export const createAvailabilities = async (
             "Chaque disponibilité doit contenir dayOfWeek, startTime et endTime",
         });
       }
+
+      const newStart = toMinutes(item.startTime);
+      const newEnd = toMinutes(item.endTime);
+
+      if (newStart >= newEnd) {
+        return res.status(400).json({
+          message: "L'heure de fin doit être après l'heure de début",
+        });
+      }
     }
 
-    // Vérification doublon exact (même jour + même plage horaire)
     const conflicts = [];
 
     for (const item of input) {
-      const existing = await Availability.findOne({
-        professional: req.user._id,
+      const newStart = toMinutes(item.startTime);
+      const newEnd = toMinutes(item.endTime);
+
+      const existingAvailabilities = await Availability.find({
+        professional: req.user._id as any,
         dayOfWeek: item.dayOfWeek,
-        startTime: item.startTime,
-        endTime: item.endTime,
+      } as any);
+
+      const hasConflict = existingAvailabilities.some((existing: any) => {
+        const existingStart = toMinutes(existing.startTime);
+        const existingEnd = toMinutes(existing.endTime);
+
+        return newStart < existingEnd && existingStart < newEnd;
       });
 
-      if (existing) {
+      if (hasConflict) {
         conflicts.push(item);
       }
     }
 
     if (conflicts.length > 0) {
       return res.status(400).json({
-        message: "Certaines disponibilités existent déjà",
+        message:
+          "Certaines disponibilités se chevauchent avec des disponibilités existantes",
         conflicts,
       });
     }
 
-    // Format final
     const formatted = input.map((item: any) => ({
-      professional: req.user._id,
+      professional: req.user!._id,
       dayOfWeek: item.dayOfWeek,
       startTime: item.startTime,
       endTime: item.endTime,
@@ -79,6 +99,7 @@ export const createAvailabilities = async (
       data: created,
     });
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
       message: "Erreur serveur",
     });
@@ -102,17 +123,17 @@ export const getMyAvailabilities = async (
     }
 
     const availabilities = await Availability.find({
-      professional: req.user._id,
+      professional: req.user._id as any,
     }).sort({ dayOfWeek: 1, startTime: 1 });
 
     return res.json(availabilities);
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
       message: "Erreur serveur",
     });
   }
 };
-
 
 /**
  * =========================
@@ -130,7 +151,15 @@ export const updateAvailability = async (
         .json({ message: "Accès réservé aux professionnels" });
     }
 
-    const { id } = req.params;
+    const rawId = req.params.id;
+
+    if (!rawId || Array.isArray(rawId)) {
+      return res.status(400).json({
+        message: "Id de disponibilité invalide",
+      });
+    }
+
+    const id = rawId;
     const { dayOfWeek, startTime, endTime, isActive } = req.body;
 
     const availability = await Availability.findById(id);
@@ -141,7 +170,6 @@ export const updateAvailability = async (
       });
     }
 
-    // 🔐 Vérifier ownership
     if (
       availability.professional.toString() !== req.user._id.toString()
     ) {
@@ -150,7 +178,44 @@ export const updateAvailability = async (
       });
     }
 
-    // ✏️ Mise à jour des champs
+    const finalDayOfWeek =
+      dayOfWeek !== undefined ? dayOfWeek : availability.dayOfWeek;
+
+    const finalStartTime =
+      startTime !== undefined ? startTime : availability.startTime;
+
+    const finalEndTime =
+      endTime !== undefined ? endTime : availability.endTime;
+
+    const newStart = toMinutes(finalStartTime);
+    const newEnd = toMinutes(finalEndTime);
+
+    if (newStart >= newEnd) {
+      return res.status(400).json({
+        message: "L'heure de fin doit être après l'heure de début",
+      });
+    }
+
+    const existingAvailabilities = await Availability.find({
+      professional: req.user._id as any,
+      dayOfWeek: finalDayOfWeek,
+      _id: { $ne: new mongoose.Types.ObjectId(id) },
+    } as any);
+
+    const hasConflict = existingAvailabilities.some((existing: any) => {
+      const existingStart = toMinutes(existing.startTime);
+      const existingEnd = toMinutes(existing.endTime);
+
+      return newStart < existingEnd && existingStart < newEnd;
+    });
+
+    if (hasConflict) {
+      return res.status(400).json({
+        message:
+          "Cette disponibilité chevauche une autre disponibilité existante",
+      });
+    }
+
     if (dayOfWeek !== undefined) availability.dayOfWeek = dayOfWeek;
     if (startTime !== undefined) availability.startTime = startTime;
     if (endTime !== undefined) availability.endTime = endTime;
@@ -162,13 +227,13 @@ export const updateAvailability = async (
       message: "Disponibilité mise à jour avec succès",
       data: availability,
     });
-  } catch {
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({
       message: "Erreur serveur",
     });
   }
 };
-
 
 /**
  * =========================
@@ -196,7 +261,6 @@ export const deleteAvailability = async (
       });
     }
 
-    // 🔐 Vérifier ownership
     if (
       availability.professional.toString() !== req.user._id.toString()
     ) {
@@ -210,7 +274,8 @@ export const deleteAvailability = async (
     return res.json({
       message: "Disponibilité supprimée avec succès",
     });
-  } catch {
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({
       message: "Erreur serveur",
     });
