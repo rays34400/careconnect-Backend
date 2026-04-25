@@ -12,7 +12,7 @@ export const sendVerificationEmail = async (
     },
   });
 
-  const verificationUrl = `http://localhost:5173/verify-email/${token}`;
+  const verificationUrl = `careconnect-frontend-three.vercel.app/verify-email/${token}`;
   await transporter.sendMail({
     from: `"CareConnect" <${process.env.EMAIL_USER}>`,
     to,
